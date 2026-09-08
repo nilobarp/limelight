@@ -32,7 +32,11 @@ echo "Creating a self-signed code-signing certificate '$IDENTITY'…"
     -addext "keyUsage=critical,digitalSignature" \
     -addext "extendedKeyUsage=critical,codeSigning" >/dev/null 2>&1
 
+# -name sets the PKCS#12 friendlyName, which becomes the label of the private
+# key in Keychain Access. Without it macOS falls back to the archive's file
+# name, so codesign ends up asking to access a key called something like "id".
 "$OPENSSL" pkcs12 -export -out "$d/id.p12" -inkey "$d/key.pem" -in "$d/cert.pem" \
+    -name "$IDENTITY" \
     -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 \
     -passout pass:limelight >/dev/null 2>&1
 
@@ -43,6 +47,35 @@ security import "$d/id.p12" -k "$KEYCHAIN" -P limelight -T /usr/bin/codesign -A 
 # for that purpose. macOS may ask for your password here.
 echo "Trusting it for code signing (macOS may ask for your password)…"
 security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$d/cert.pem"
+
+# macOS gates key use on the partition list as well as the ACL, so the first
+# codesign will pop a "wants to access key" password prompt unless codesign is
+# added to it. Offer to do that now; the alternative is one click on
+# "Always Allow" the first time it asks.
+if [ -t 0 ]; then
+    echo
+    printf 'Let codesign use this key without prompting? [Y/n] '
+    read -r reply || reply=""
+    case "$reply" in
+        [Nn]*)
+            echo 'Fine — click "Always Allow" the first time codesign asks.'
+            ;;
+        *)
+            printf 'login keychain password (not stored, passed only to security(1)): '
+            stty -echo 2>/dev/null || true
+            read -r pw || pw=""
+            stty echo 2>/dev/null || true
+            echo
+            if security set-key-partition-list -S apple-tool:,apple:,codesign: \
+                 -s -l "$IDENTITY" -k "$pw" "$KEYCHAIN" >/dev/null 2>&1; then
+                echo "Done — codesign will not prompt."
+            else
+                echo 'Could not set that; click "Always Allow" when codesign asks.'
+            fi
+            unset pw
+            ;;
+    esac
+fi
 
 echo
 if security find-identity -v -p codesigning | grep "$IDENTITY"; then
