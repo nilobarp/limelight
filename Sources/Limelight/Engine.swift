@@ -111,34 +111,42 @@ final class Engine {
         lastGoodFrontPID.flatMap { NSRunningApplication(processIdentifier: $0) }
     }
 
-    /// Bright apps ordered bottom-to-top: companions first, the stage last.
+    /// Bright apps ordered bottom-to-top: our own windows, then companions,
+    /// then the stage on top.
     private func computeBright() -> [pid_t] {
-        // Our own scrims are layer-0 windows; without excluding them Limelight
-        // looks like a windowed app and can become the stage itself.
         let scrims = overlays.ids
-        let withWindows = Set(WindowGraph.onScreen().filter { !scrims.contains($0.id) }.map(\.pid))
+        let real = WindowGraph.onScreen().filter { !scrims.contains($0.id) }
+        // Limelight never takes the stage: opening the About window must not
+        // black out the work behind it. Its windows are lit all the same, or the
+        // app's own UI would be the one thing you cannot read.
+        let weHaveAWindow = real.contains { $0.pid == ourPID }
+        let withWindows = Set(real.filter { $0.pid != ourPID }.map(\.pid))
+
+        var bright: [pid_t] = []
+        if weHaveAWindow { bright.append(ourPID) }
 
         var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        if let f = frontPID, withWindows.contains(f) {
+        if let f = frontPID, f != ourPID, withWindows.contains(f) {
             lastGoodFrontPID = f
         } else {
-            // A windowless helper grabbed focus — keep the stage as it was.
+            // A windowless helper — or Limelight itself — took focus. Keep the
+            // stage as it was.
             frontPID = lastGoodFrontPID.flatMap { withWindows.contains($0) ? $0 : nil }
         }
-        guard let front = frontPID else { return [] }
+        guard let front = frontPID else { return bright }
 
         // Companions need Accessibility to be raised. Without it, lighting one
         // would drag the scrim down to its buried window and leave everything
-        // above it undimmed - worse than ignoring the group.
+        // above it undimmed — worse than ignoring the group.
         guard AX.trusted,
               let stage = NSRunningApplication(processIdentifier: front)?.bundleIdentifier
-        else { return [front] }
+        else {
+            bright.append(front)
+            return bright
+        }
 
         let quarantined = Set(settings.quarantined)
         let companions = Set(settings.companions(of: stage)).subtracting(quarantined)
-        guard !companions.isEmpty else { return [front] }
-
-        var bright: [pid_t] = []
         for app in NSWorkspace.shared.runningApplications {
             guard let bid = app.bundleIdentifier, companions.contains(bid) else { continue }
             let pid = app.processIdentifier
