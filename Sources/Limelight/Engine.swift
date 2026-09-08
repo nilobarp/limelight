@@ -289,14 +289,13 @@ final class Engine {
     /// nil when the band is correct on every screen.
     private func verify(_ bright: Set<pid_t>) -> String? {
         let all = WindowGraph.onScreen()
-        let ids = overlays.ids
         let frames = overlays.cgFrames
 
         for (i, overlay) in overlays.overlays.enumerated() {
             guard let idx = all.firstIndex(where: { $0.id == overlay.number }) else {
                 return "scrim \(i) not yet listed"
             }
-            let mine = { (w: Win) in !ids.contains(w.id) && Screens.index(of: w.bounds, in: frames) == i }
+            let mine = { (w: Win) in w.pid != ourPID && Screens.index(of: w.bounds, in: frames) == i }
             if let leak = all[..<idx].first(where: { mine($0) && !bright.contains($0.pid) }) {
                 return "\(leak.owner) undimmed on screen \(i)"
             }
@@ -354,9 +353,19 @@ final class Engine {
         if !settings.enabled { overlays.hide(); placedAnchor.removeAll() }
     }
 
-    func togglePinFrontmost() {
-        guard let bid = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return }
+    enum PinChange {
+        case pinned(NSRunningApplication)
+        case unpinned(NSRunningApplication)
+        case notPinnable
+    }
+
+    @discardableResult
+    func togglePinFrontmost() -> PinChange {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              let bid = app.bundleIdentifier else { return .notPinnable }
+        let wasPinned = settings.pins.contains(bid)
         togglePin(bid)
+        return wasPinned ? .unpinned(app) : .pinned(app)
     }
 
     func togglePin(_ bundleID: String) {

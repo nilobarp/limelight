@@ -18,10 +18,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(engine: engine)
 
         HotkeyManager.shared.register(key: HotkeyManager.keyD, modifiers: HotkeyManager.cmdOpt) { [weak self] in
-            self?.engine.toggleEnabled()
+            guard let self else { return }
+            self.engine.toggleEnabled()
+            HUD.shared.show(icon: nil,
+                            title: self.engine.settings.enabled ? "Dimming on" : "Dimming off")
         }
         HotkeyManager.shared.register(key: HotkeyManager.keyP, modifiers: HotkeyManager.cmdOpt) { [weak self] in
-            self?.engine.togglePinFrontmost()
+            guard let self else { return }
+            switch self.engine.togglePinFrontmost() {
+            case .pinned(let app):
+                HUD.shared.show(icon: app.icon,
+                                title: "Pinned \(app.localizedName ?? "app")",
+                                detail: AX.trusted ? "Stays lit" : "Needs Accessibility to take effect")
+            case .unpinned(let app):
+                HUD.shared.show(icon: app.icon,
+                                title: "Unpinned \(app.localizedName ?? "app")",
+                                detail: "Dims when not frontmost")
+            case .notPinnable:
+                HUD.shared.show(icon: nil, title: "Can't pin this app",
+                                detail: "It has no bundle identifier")
+            }
         }
 
         engine.start()
