@@ -5,6 +5,7 @@
 	<key>CFBundleName</key>            <string>Limelight</string>
 	<key>CFBundleDisplayName</key>     <string>Limelight</string>
 	<key>CFBundleIdentifier</key>      <string>dev.nilobarp.limelight</string>
+	<key>CFBundleIconFile</key>        <string>AppIcon</string>
 	<key>CFBundleExecutable</key>      <string>Limelight</string>
 	<key>CFBundlePackageType</key>     <string>APPL</string>
 	<key>CFBundleShortVersionString</key> <string>0.1.0</string>
