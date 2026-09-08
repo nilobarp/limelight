@@ -5,7 +5,7 @@ BIN      := .build/release/Limelight
 ICON     := Resources/AppIcon.icns
 DEST     ?= /Applications
 
-.PHONY: all build bundle sign install run icon clean cert-help
+.PHONY: all build bundle sign install uninstall run icon clean cert cert-help
 
 all: bundle
 
@@ -40,12 +40,12 @@ sign:
 	@hash=$$(security find-identity -v -p codesigning | grep "$(IDENTITY)" | head -1 | awk '{print $$2}'); \
 	if [ -n "$$hash" ]; then \
 		echo "signing with '$(IDENTITY)' ($$hash)"; \
-		codesign --force --deep --sign "$$hash" $(APP); \
+		codesign --force --sign "$$hash" $(APP); \
 	else \
 		echo "!! identity '$(IDENTITY)' not found — falling back to ad-hoc."; \
 		echo "!! You will have to re-grant Accessibility after every build."; \
 		echo "!! Run 'make cert-help' to fix this once."; \
-		codesign --force --deep --sign - $(APP); \
+		codesign --force --sign - $(APP); \
 	fi
 
 install: bundle
@@ -55,14 +55,27 @@ install: bundle
 run: install
 	open $(DEST)/$(APP)
 
+uninstall:
+	-pkill -TERM -f '$(APP)/Contents/MacOS/Limelight'
+	rm -rf $(DEST)/$(APP)
+	@echo "removed $(DEST)/$(APP)"
+	@echo "settings still stored; to clear them too:"
+	@echo "  defaults delete $(BUNDLE)"
+	@echo "revoke Accessibility in System Settings > Privacy & Security > Accessibility"
+
 clean:
 	rm -rf .build $(APP)
 
+# Run once. Keeps the Accessibility grant alive across rebuilds; see the script.
+cert:
+	@Tools/make-cert.sh "$(IDENTITY)"
+
+# Fallback if 'make cert' fails, e.g. under a managed keychain policy.
 cert-help:
-	@echo "Create the stable signing identity once:"
+	@echo "'make cert' does this for you. To do it by hand instead:"
 	@echo "  1. Open Keychain Access"
 	@echo "  2. Menu: Keychain Access > Certificate Assistant > Create a Certificate…"
 	@echo "  3. Name: $(IDENTITY)"
 	@echo "     Identity Type: Self Signed Root"
 	@echo "     Certificate Type: Code Signing"
-	@echo "  4. Create, then re-run 'make install'"
+	@echo "  4. Create, then run 'make install'"
