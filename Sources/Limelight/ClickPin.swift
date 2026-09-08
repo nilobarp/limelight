@@ -9,15 +9,15 @@ import AppKit
 /// click would otherwise just raise something you have chosen to keep dim.
 final class ClickPin {
     private let engine: Engine
-    private let onToggle: (NSRunningApplication, Bool) -> Void
+    private let onHit: (NSRunningApplication) -> Void
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var retry: Timer?
 
-    init(engine: Engine, onToggle: @escaping (NSRunningApplication, Bool) -> Void) {
+    init(engine: Engine, onHit: @escaping (NSRunningApplication) -> Void) {
         self.engine = engine
-        self.onToggle = onToggle
+        self.onHit = onHit
     }
 
     func start() {
@@ -80,18 +80,15 @@ final class ClickPin {
             $0.pid != ourPID && $0.bounds.contains(point)
         }) else { return false }
 
+        // Never the app being worked in: that is the stage, and shift-click
+        // there means extend-selection.
         guard hit.pid != NSWorkspace.shared.frontmostApplication?.processIdentifier,
               let app = NSRunningApplication(processIdentifier: hit.pid),
-              let bid = app.bundleIdentifier
+              app.bundleIdentifier != nil
         else { return false }
 
         // Event taps have a watchdog, so do the actual work off the callback.
-        let willPin = !engine.settings.pins.contains(bid)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.engine.togglePin(bid)
-            self.onToggle(app, willPin)
-        }
+        DispatchQueue.main.async { [weak self] in self?.onHit(app) }
         return true
     }
 }

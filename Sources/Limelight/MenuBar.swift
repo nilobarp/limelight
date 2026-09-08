@@ -39,35 +39,43 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(disabled("Dim level"))
         menu.addItem(sliderItem())
 
-        let pinned = Set(s.pins)
-        let quarantined = Set(s.quarantined)
         let running = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != nil }
             .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+        let quarantined = Set(s.quarantined)
+        let stage = engine.stageApp
+        let stageBID = stage?.bundleIdentifier
+        let companions = stageBID.map { s.companions(of: $0) } ?? []
 
-        if !pinned.isEmpty {
-            menu.addItem(.separator())
-            menu.addItem(disabled("Pinned"))
-            for bid in s.pins {
-                let name = running.first { $0.bundleIdentifier == bid }?.localizedName ?? bid
-                if quarantined.contains(bid) {
-                    let it = item("⚠ \(name) — steals focus", action: #selector(retryPin(_:)))
-                    it.representedObject = bid
-                    it.toolTip = "Limelight stopped raising this app because it grabs focus when raised. Click to retry."
-                    menu.addItem(it)
-                } else {
-                    let it = item("✓ \(name)", action: #selector(togglePin(_:)))
-                    it.representedObject = bid
-                    menu.addItem(it)
-                }
+        menu.addItem(.separator())
+        if let stage, let stageBID {
+            menu.addItem(disabled("Stage: \(stage.localizedName ?? stageBID)"))
+            if companions.isEmpty {
+                menu.addItem(disabled("   nothing grouped yet"))
             }
+            for bid in companions {
+                let app = running.first { $0.bundleIdentifier == bid }
+                let name = app?.localizedName ?? bid
+                let title = quarantined.contains(bid) ? "⚠ \(name) — steals focus" : "✓ \(name)"
+                let it = item(title, action: quarantined.contains(bid)
+                                        ? #selector(retryApp(_:)) : #selector(toggleMember(_:)))
+                it.representedObject = bid
+                if quarantined.contains(bid) {
+                    it.toolTip = "Limelight stopped raising this app because it grabs focus when raised. Click to retry."
+                }
+                menu.addItem(it)
+            }
+        } else {
+            menu.addItem(disabled("No stage yet"))
         }
 
         menu.addItem(.separator())
-        menu.addItem(disabled("Running"))
+        menu.addItem(disabled("Add to stage"))
+        let grouped = Set(companions)
         for app in running {
-            guard let bid = app.bundleIdentifier, !pinned.contains(bid) else { continue }
-            let it = item(app.localizedName ?? bid, action: #selector(togglePin(_:)))
+            guard let bid = app.bundleIdentifier,
+                  bid != stageBID, !grouped.contains(bid) else { continue }
+            let it = item(app.localizedName ?? bid, action: #selector(toggleMember(_:)))
             it.representedObject = bid
             it.image = app.icon.map { icon in
                 let c = icon.copy() as! NSImage
@@ -79,14 +87,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         if !AX.trusted {
-            let label = s.pins.isEmpty
-                ? "Enable pinning (needs Accessibility)…"
-                : "⚠ Pins inactive — grant Accessibility…"
+            let label = s.groups.isEmpty
+                ? "Enable grouping (needs Accessibility)…"
+                : "⚠ Groups inactive — grant Accessibility…"
             menu.addItem(item(label, action: #selector(grantAccessibility)))
         }
-        let sc = item("Shift-click to pin", action: #selector(toggleShiftClick))
+        let sc = item("Shift-click to group", action: #selector(toggleShiftClick))
         sc.state = s.shiftClickToPin ? .on : .off
-        sc.toolTip = "Shift-click any window other than the one you're working in to add or remove it from the lit set."
+        sc.toolTip = "Shift-click any window other than the one you're working in to add or remove it from the stage."
         menu.addItem(sc)
 
         let login = item("Launch at login", action: #selector(toggleLoginItem))
@@ -122,12 +130,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func toggleEnabled() { engine.toggleEnabled() }
 
-    @objc private func togglePin(_ sender: NSMenuItem) {
-        guard let bid = sender.representedObject as? String else { return }
-        engine.togglePin(bid)
+    @objc private func toggleMember(_ sender: NSMenuItem) {
+        guard let bid = sender.representedObject as? String,
+              let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bid })
+        else { return }
+        engine.toggleMembership(of: app)
     }
 
-    @objc private func retryPin(_ sender: NSMenuItem) {
+    @objc private func retryApp(_ sender: NSMenuItem) {
         guard let bid = sender.representedObject as? String else { return }
         engine.unquarantine(bid)
     }

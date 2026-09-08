@@ -104,31 +104,45 @@ final class Engine {
 
     // MARK: bright set
 
-    /// Bright apps ordered bottom-to-top: pins first, frontmost last.
+    /// The app whose stage is showing - the last real frontmost app. Our own
+    /// menu taking focus must not count, or opening it would blank the screen.
+    var stageApp: NSRunningApplication? {
+        lastGoodFrontPID.flatMap { NSRunningApplication(processIdentifier: $0) }
+    }
+
+    /// Bright apps ordered bottom-to-top: companions first, the stage last.
     private func computeBright() -> [pid_t] {
-        let withWindows = Set(WindowGraph.onScreen().map(\.pid))
+        // Our own scrims are layer-0 windows; without excluding them Limelight
+        // looks like a windowed app and can become the stage itself.
+        let withWindows = Set(WindowGraph.onScreen().filter { $0.pid != ourPID }.map(\.pid))
 
         var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        if let f = frontPID, withWindows.contains(f) {
+        if let f = frontPID, f != ourPID, withWindows.contains(f) {
             lastGoodFrontPID = f
         } else {
-            // A windowless helper grabbed focus — keep the band as it was.
+            // A windowless helper grabbed focus — keep the stage as it was.
             frontPID = lastGoodFrontPID.flatMap { withWindows.contains($0) ? $0 : nil }
         }
+        guard let front = frontPID else { return [] }
 
-        // Pins need Accessibility to be raised. Without it a pin sits wherever it
-        // happens to be in the stack, and anchoring the scrim to it would leave
-        // every window above it undimmed — worse than ignoring the pin.
+        // Companions need Accessibility to be raised. Without it, lighting one
+        // would drag the scrim down to its buried window and leave everything
+        // above it undimmed - worse than ignoring the group.
+        guard AX.trusted,
+              let stage = NSRunningApplication(processIdentifier: front)?.bundleIdentifier
+        else { return [front] }
+
         let quarantined = Set(settings.quarantined)
-        let canPin = AX.trusted
+        let companions = Set(settings.companions(of: stage)).subtracting(quarantined)
+        guard !companions.isEmpty else { return [front] }
+
         var bright: [pid_t] = []
-        for app in NSWorkspace.shared.runningApplications where canPin {
-            guard let bid = app.bundleIdentifier,
-                  settings.pins.contains(bid), !quarantined.contains(bid) else { continue }
+        for app in NSWorkspace.shared.runningApplications {
+            guard let bid = app.bundleIdentifier, companions.contains(bid) else { continue }
             let pid = app.processIdentifier
-            if pid != frontPID, withWindows.contains(pid) { bright.append(pid) }
+            if pid != front, withWindows.contains(pid) { bright.append(pid) }
         }
-        if let f = frontPID { bright.append(f) }
+        bright.append(front)   // the stage sits on top
         return bright
     }
 
@@ -366,29 +380,42 @@ final class Engine {
         if !settings.enabled { overlays.hide(); placedAnchor.removeAll() }
     }
 
-    enum PinChange {
-        case pinned(NSRunningApplication)
-        case unpinned(NSRunningApplication)
-        case notPinnable
+    enum GroupChange {
+        case added(NSRunningApplication, stage: String)
+        case removed(NSRunningApplication, stage: String)
+        case notPossible
     }
 
+    /// Adds or removes `app` from the current stage's group.
     @discardableResult
-    func togglePinFrontmost() -> PinChange {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              let bid = app.bundleIdentifier else { return .notPinnable }
-        let wasPinned = settings.pins.contains(bid)
-        togglePin(bid)
-        return wasPinned ? .unpinned(app) : .pinned(app)
+    func toggleMembership(of app: NSRunningApplication) -> GroupChange {
+        guard let bid = app.bundleIdentifier,
+              let stage = stageApp,
+              let stageBID = stage.bundleIdentifier,
+              bid != stageBID
+        else { return .notPossible }
+
+        let stageName = stage.localizedName ?? stageBID
+        let added = settings.toggleMember(bid, with: stageBID)
+        // Grouping is what Accessibility is for; ask at the moment it matters.
+        if added, !AX.trusted { AX.requestTrust() }
+        return added ? .added(app, stage: stageName) : .removed(app, stage: stageName)
     }
 
-    func togglePin(_ bundleID: String) {
-        if let i = settings.pins.firstIndex(of: bundleID) {
-            settings.pins.remove(at: i)
-        } else {
-            settings.pins.append(bundleID)
-            // Frontmost-only dimming needs no Accessibility; pinning does. Ask
-            // the first time it actually matters rather than nagging at launch.
-            if !AX.trusted { AX.requestTrust() }
-        }
+    func isGrouped(_ bundleID: String) -> Bool {
+        guard let stageBID = stageApp?.bundleIdentifier else { return false }
+        return settings.companions(of: stageBID).contains(bundleID)
     }
+
+    /// Breaks up the current stage's group, leaving it on its own.
+    /// Returns the stage's name and whether it had a group to break up.
+    @discardableResult
+    func soloStage() -> (name: String, wasGrouped: Bool)? {
+        guard let stage = stageApp, let bid = stage.bundleIdentifier else { return nil }
+        let name = stage.localizedName ?? bid
+        guard settings.groupIndex(containing: bid) != nil else { return (name, false) }
+        settings.dissolveGroup(containing: bid)
+        return (name, true)
+    }
+
 }

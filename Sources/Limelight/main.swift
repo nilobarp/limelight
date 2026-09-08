@@ -24,27 +24,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             HUD.shared.show(icon: nil,
                             title: self.engine.settings.enabled ? "Dimming on" : "Dimming off")
         }
+        // ⌥⌘P used to pin the frontmost app, which is meaningless once the
+        // stage is always lit. It now breaks up the stage's group instead.
         HotkeyManager.shared.register(key: HotkeyManager.keyP, modifiers: HotkeyManager.cmdOpt) { [weak self] in
-            guard let self else { return }
-            switch self.engine.togglePinFrontmost() {
-            case .pinned(let app):
-                HUD.shared.show(icon: app.icon,
-                                title: "Pinned \(app.localizedName ?? "app")",
-                                detail: AX.trusted ? "Stays lit" : "Needs Accessibility to take effect")
-            case .unpinned(let app):
-                HUD.shared.show(icon: app.icon,
-                                title: "Unpinned \(app.localizedName ?? "app")",
-                                detail: "Dims when not frontmost")
-            case .notPinnable:
-                HUD.shared.show(icon: nil, title: "Can't pin this app",
-                                detail: "It has no bundle identifier")
-            }
+            guard let self, let (name, wasGrouped) = self.engine.soloStage() else { return }
+            HUD.shared.show(icon: self.engine.stageApp?.icon,
+                            title: wasGrouped ? "\(name) is now solo" : "\(name) is already solo",
+                            detail: wasGrouped ? "Group broken up" : nil)
         }
 
-        clickPin = ClickPin(engine: engine) { app, pinned in
-            HUD.shared.show(icon: app.icon,
-                            title: "\(pinned ? "Pinned" : "Unpinned") \(app.localizedName ?? "app")",
-                            detail: pinned ? "Stays lit" : "Dims when not frontmost")
+        clickPin = ClickPin(engine: engine) { [weak self] app in
+            guard let self else { return }
+            switch self.engine.toggleMembership(of: app) {
+            case .added(let app, let stage):
+                HUD.shared.show(icon: app.icon,
+                                title: "Added \(app.localizedName ?? "app")",
+                                detail: AX.trusted ? "Lit alongside \(stage)"
+                                                   : "Needs Accessibility to take effect")
+            case .removed(let app, let stage):
+                HUD.shared.show(icon: app.icon,
+                                title: "Removed \(app.localizedName ?? "app")",
+                                detail: "No longer lit with \(stage)")
+            case .notPossible:
+                HUD.shared.show(icon: nil, title: "Can't group that app")
+            }
         }
         clickPin.start()
 
