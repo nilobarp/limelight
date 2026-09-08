@@ -43,7 +43,8 @@ final class Engine {
     // MARK: lifecycle
 
     func start() {
-        Log.d("accessibility trusted: \(AX.trusted) — pins \(AX.trusted ? "active" : "IGNORED")")
+        UserDefaults.standard.set(AX.trusted, forKey: "axTrusted")
+        Log.d("accessibility trusted: \(AX.trusted) — groups \(AX.trusted ? "active" : "IGNORED")")
 
         let nc = NSWorkspace.shared.notificationCenter
         for name: NSNotification.Name in [

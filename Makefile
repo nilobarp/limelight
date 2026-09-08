@@ -49,8 +49,7 @@ sign:
 	fi
 
 install: bundle
-	rm -rf $(DEST)/$(APP)
-	cp -R $(APP) $(DEST)/
+	ditto $(APP) $(DEST)/$(APP)
 	@echo "installed to $(DEST)/$(APP)"
 
 run: install
