@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+Package.resolved
+
+# Build products
+Limelight.app/
+Resources/AppIcon.icns
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
