@@ -1,16 +1,19 @@
 APP      := Limelight.app
 BUNDLE   := dev.nilobarp.limelight
-IDENTITY ?= Limelight Dev
+IDENTITY ?= Limelight App
 BIN      := .build/release/Limelight
 ICON     := Resources/AppIcon.icns
 DEST     ?= /Applications
 
-.PHONY: all build bundle sign install uninstall run icon clean cert cert-help
+.PHONY: all build test bundle sign install uninstall run icon clean cert cert-help
 
 all: bundle
 
 build:
 	swift build -c release
+
+test:
+	swift test
 
 # Drawn with CoreGraphics from the same primitives as Resources/icon.svg, so
 # every size is rendered rather than scaled from one bitmap.
