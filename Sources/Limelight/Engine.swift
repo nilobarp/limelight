@@ -115,10 +115,11 @@ final class Engine {
     private func computeBright() -> [pid_t] {
         // Our own scrims are layer-0 windows; without excluding them Limelight
         // looks like a windowed app and can become the stage itself.
-        let withWindows = Set(WindowGraph.onScreen().filter { $0.pid != ourPID }.map(\.pid))
+        let scrims = overlays.ids
+        let withWindows = Set(WindowGraph.onScreen().filter { !scrims.contains($0.id) }.map(\.pid))
 
         var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        if let f = frontPID, f != ourPID, withWindows.contains(f) {
+        if let f = frontPID, withWindows.contains(f) {
             lastGoodFrontPID = f
         } else {
             // A windowless helper grabbed focus — keep the stage as it was.
@@ -207,7 +208,7 @@ final class Engine {
     private func windowsOutOfPosition(_ bright: Set<pid_t>) -> [Win] {
         let ids = overlays.ids
         let frames = overlays.cgFrames
-        let all = WindowGraph.onScreen().filter { $0.pid != ourPID && !ids.contains($0.id) }
+        let all = WindowGraph.onScreen().filter { !ids.contains($0.id) }
 
         var out: [Win] = []
         for i in overlays.overlays.indices {
@@ -297,7 +298,8 @@ final class Engine {
     /// to orderFront first, doing so flashes the scrim over everything for a frame.
     private func place(_ bright: Set<pid_t>) {
         let frames = overlays.cgFrames
-        let wins = WindowGraph.onScreen().filter { $0.pid != ourPID }
+        let scrims = overlays.ids
+        let wins = WindowGraph.onScreen().filter { !scrims.contains($0.id) }
 
         for (i, overlay) in overlays.overlays.enumerated() {
             let anchor = wins.last {
@@ -317,13 +319,14 @@ final class Engine {
     /// nil when the band is correct on every screen.
     private func verify(_ bright: Set<pid_t>) -> String? {
         let all = WindowGraph.onScreen()
+        let scrims = overlays.ids
         let frames = overlays.cgFrames
 
         for (i, overlay) in overlays.overlays.enumerated() {
             guard let idx = all.firstIndex(where: { $0.id == overlay.number }) else {
                 return "scrim \(i) not yet listed"
             }
-            let mine = { (w: Win) in w.pid != ourPID && Screens.index(of: w.bounds, in: frames) == i }
+            let mine = { (w: Win) in !scrims.contains(w.id) && Screens.index(of: w.bounds, in: frames) == i }
             if let leak = all[..<idx].first(where: { mine($0) && !bright.contains($0.pid) }) {
                 return "\(leak.owner) undimmed on screen \(i)"
             }

@@ -100,6 +100,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let login = item("Launch at login", action: #selector(toggleLoginItem))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
+        menu.addItem(item("About Limelight…", action: #selector(showAbout)))
         menu.addItem(item("Quit Limelight", action: #selector(quit), key: "q"))
     }
 
@@ -161,6 +162,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             Log.d("login item toggle failed: \(error)")
         }
     }
+
+    @objc private func showAbout() { AboutWindow.shared.show() }
 
     @objc private func quit() { NSApp.terminate(nil) }
 }

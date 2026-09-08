@@ -52,6 +52,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clickPin.start()
 
         engine.start()
+
+        // Nothing is stored on a genuinely first run, so explain the app.
+        if UserDefaults.standard.data(forKey: "settings") == nil {
+            AboutWindow.shared.show()
+        }
+    }
+
+    /// Double-clicking a menu bar app in Finder otherwise does nothing visible
+    /// at all - it just takes focus, which reads as "the screen dimmed and
+    /// nothing happened".
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        AboutWindow.shared.show()
+        return true
     }
 }
 
