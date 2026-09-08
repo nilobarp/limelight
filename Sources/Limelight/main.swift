@@ -3,6 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: Engine!
     private var menuBar: MenuBarController!
+    private var clickPin: ClickPin!
 
     func applicationDidFinishLaunching(_ n: Notification) {
         // Two instances means two sets of scrims fighting over the z-order, and
@@ -39,6 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 detail: "It has no bundle identifier")
             }
         }
+
+        clickPin = ClickPin(engine: engine) { app, pinned in
+            HUD.shared.show(icon: app.icon,
+                            title: "\(pinned ? "Pinned" : "Unpinned") \(app.localizedName ?? "app")",
+                            detail: pinned ? "Stays lit" : "Dims when not frontmost")
+        }
+        clickPin.start()
 
         engine.start()
     }

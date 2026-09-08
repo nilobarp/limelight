@@ -84,6 +84,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
                 : "⚠ Pins inactive — grant Accessibility…"
             menu.addItem(item(label, action: #selector(grantAccessibility)))
         }
+        let sc = item("Shift-click to pin", action: #selector(toggleShiftClick))
+        sc.state = s.shiftClickToPin ? .on : .off
+        sc.toolTip = "Shift-click any window other than the one you're working in to add or remove it from the lit set."
+        menu.addItem(sc)
+
         let login = item("Launch at login", action: #selector(toggleLoginItem))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
@@ -130,6 +135,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func alphaChanged(_ sender: NSSlider) {
         engine.settings.alpha = sender.doubleValue
     }
+
+    @objc private func toggleShiftClick() { engine.settings.shiftClickToPin.toggle() }
 
     @objc private func grantAccessibility() { AX.requestTrust() }
 
