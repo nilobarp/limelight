@@ -22,6 +22,9 @@ final class Engine {
     private var fenceUntil = Date.distantPast
     private var lastRaiseAt = Date.distantPast
     private var lastRaiseSet: Set<pid_t> = []
+    /// Display layout at the last rebuild, to tell a real screen change from the
+    /// many other things that post didChangeScreenParameters.
+    private var screenConfig: [CGRect] = []
     /// Anchor each scrim was last ordered against; 0 means "ordered to front".
     private var placedAnchor: [Int: CGWindowID] = [:]
 
@@ -34,6 +37,7 @@ final class Engine {
     init(settings: Settings) {
         self.settings = settings
         overlays = OverlayController(alpha: settings.alpha)
+        screenConfig = NSScreen.screens.map(\.frame)
     }
 
     // MARK: lifecycle
@@ -65,6 +69,15 @@ final class Engine {
     @objc private func workspaceEvent(_ n: Notification) { schedule("workspace") }
 
     @objc private func screensChanged() {
+        // The notification fires for far more than display changes - showing the
+        // HUD triggers it. Recreating both scrims tears down and re-adds two
+        // full-screen windows, which can flash, so only do it for a real change.
+        let now = NSScreen.screens.map(\.frame)
+        guard now != screenConfig else {
+            Log.d("screen parameters unchanged — not rebuilding")
+            return
+        }
+        screenConfig = now
         overlays.rebuild()
         placedAnchor.removeAll()
         schedule("screens")
